@@ -1,4 +1,4 @@
-# *Meeting wild-caught seafood demand at least cost to biodiversity* scripts
+# Scripts for *Meeting wild-caught seafood demand at least cost to biodiversity*
 
 ## About
 Produces the various analyses and figures associated with "Meeting wild-caught seafood demand at least cost to biodiversity".
