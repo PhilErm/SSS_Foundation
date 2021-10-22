@@ -20,6 +20,7 @@ library(beepr)
 
 source("scripts/parameters.R")
 source("scripts/functions.R")
+source("scripts/dispFunctions.R")
 
 # Generate distributions from parameters ####
 
@@ -899,8 +900,8 @@ max.sparing$catch <- max.sparing$catch/target.MSY.standard
 sharing$catch <- sharing$catch/target.MSY.standard
 
 # Set labels for figures
-max.sparing$scen <- "Traditional\n fisheries\n management\n with largest\n possible MPA\n (max. sparing)"
-sharing$scen <- "Traditional \n fisheries\n management\n alone (sharing)"
+max.sparing$scen <- "Conventional\n fisheries\n management\n with largest\n possible MPA\n (max. sparing)"
+sharing$scen <- "Conventional \n fisheries\n management\n alone (sharing)"
 
 # Process data
 new.data.arith <- rbind.data.frame(sharing, max.sparing)
@@ -947,7 +948,7 @@ varB <- ggplot(new.data.geom, aes(x = geom.mean)) +
   guides(fill = FALSE)
 varB
 
-# Arramge amd save
+# Arrange amd save
 varPlots <- 
   varA / 
   varB
@@ -2382,6 +2383,1173 @@ sensPlots <-
 sensPlots
 #ggsave(filename = "figs/doubler.pdf", sensPlots, width = 20, height = 14, units = "cm")
 #ggsave(filename = "figs/doubler.png", sensPlots, width = 20, height = 14, units = "cm")
+
+# Sens. analysis: model with dispersal m = 0.1 ####
+
+# SECTION DESCRIPTION/NOTES
+# See section title. From examination, only the following pairs of equilibria produce biologically sensible results (i.e. no negative / complex abundances):
+# - Calculating abundance from effort: Eq. 2
+# - Calculating abundance from catch: Eq. 4
+
+# Reset targeted r
+target.r <- malacostraca.mean.r
+target.MSY.standard <- (target.r*kt)/4
+
+# Specify equilibria functions to be used
+# Abundance from catch
+in.catch.eq <- d.catch.eq.in.4
+out.catch.eq <-  d.catch.eq.out.4
+
+# Abundance from effort
+in.abun.eq <- d.eq.in.2
+out.abun.eq <- d.eq.out.2
+tot.abun.eq <- function(r, k, s, q, e, m){
+  in.abun <- Re(in.abun.eq(r, k, s, q, e, m))
+  in.abun[in.abun < 0] <- 0
+  out.abun <- Re(out.abun.eq(r, k, s, q, e, m))
+  out.abun[out.abun < 0] <- 0
+  abun <- in.abun + out.abun
+  abun
+}
+
+# Set parameters
+set.seed(1) # Random seed used in manuscript
+num.spec <- 10 # Number of species to draw from each distribution 
+num.sims <- 100 # Number of species assemblages to simulate
+dispersal <- 0.1 # Dispersal rate of all species
+
+# Set granularity of exploration
+s.interval <- 0.00125
+
+# Define spectra of catch and sparing being explored
+spect.s <- c(0,seq(s.interval,1-s.interval,s.interval))
+spect.c <- c(0.3*target.MSY.standard, 0.6*target.MSY.standard, 0.9*target.MSY.standard)
+
+# Create results list
+results.list <- list()
+
+# Produce results for targeted species
+for (i in seq_along(spect.s)){
+  for (j in seq_along(spect.c)){
+    # Produce results
+    in.pop <- in.catch.eq(r=target.r,
+                             k=kt,
+                             s=spect.s[i],
+                             m=dispersal,
+                             c=spect.c[j])
+    out.pop <- out.catch.eq(r=target.r,
+                             k=kt,
+                             s=spect.s[i],
+                             m=dispersal,
+                             c=spect.c[j])
+    in.pop[Im(in.pop) > 0.00000001] <- NA
+    in.pop[Im(in.pop) < -0.00000001] <- NA
+    out.pop[Im(out.pop) > 0.00000001] <- NA
+    out.pop[Im(out.pop) < -0.00000001] <- NA
+    in.pop[Re(in.pop) < 0] <- NA
+    out.pop[Re(out.pop) < 0] <- NA
+    in.pop <- Re(in.pop)
+    out.pop <- Re(out.pop)
+    targ.n <- in.pop + out.pop
+    
+    s.value <- spect.s[i]
+    c.value <- spect.c[j]
+    
+    # Use out.pop to calculate e.value
+    e.value <- c.value/(target.q*out.pop)
+    
+    # Store results
+    num.eq.df <- cbind.data.frame(targ.n,
+                                  s.value,
+                                  c.value,
+                                  e.value)
+    results.list[[paste("s =", s.value,
+                        "c =", c.value,
+                        "e =", e.value,
+                        sep=" ")]] <- num.eq.df
+  }
+}
+
+# Store results
+results <- rbindlist(results.list)
+
+# Process results
+results <- drop_na(results)
+
+# Produce results for all species, all assemblages
+pb <- txtProgressBar(min = 0, max = num.sims, style = 3)
+list.data <- list()
+for(j in 1:num.sims){
+  setTxtProgressBar(pb, j)
+  cat(" Simulating sample", j, "of", num.sims)
+  all.species <- builder(n = num.spec, 
+                         mean.q = dist.pars$mean.q, 
+                         sd.q = dist.pars$log.sd.q,
+                         mean.r = dist.pars$mean.r, 
+                         sd.r = dist.pars$log.sd.r,
+                         name = dist.pars$class)
+  data <- NULL
+  for(i in 1:nrow(all.species)){
+    class <- all.species$class[i]
+    species <- all.species$species[i]
+    catch <- results$c.value
+    sparing <- results$s.value
+    effort <- results$e.value
+    total <- abun.catch(rt=target.r,
+                        qt=target.q,
+                        rn=all.species$r.value[i],
+                        qn=all.species$q.value[i],
+                        s=sparing,
+                        ct=catch,
+                        kt=kt)
+    total <- tot.abun.eq(r=all.species$r.value[i],
+                         k=kt,
+                         s=sparing, 
+                         q=all.species$q.value[i], 
+                         e=effort, 
+                         m=dispersal)
+    res <- cbind.data.frame(class,species,catch,sparing,total)
+    data <- rbind.data.frame(data, res)
+  }
+  list.data[[j]] <- data
+}
+close(pb)
+
+# Store results
+data <- rbindlist(list.data, idcol="sim")
+
+# Process results
+#data <- drop_na(data)
+beep()
+
+# Highly complex equilibria formula for dispersal case cannot
+# accomodate s = 0
+# However, s = 0 is simply the case in which there is no dispersal
+# and no sparing, i.e., the Schaefer model
+# Therefore values for s = 0 can be supplied using equilibria
+# formulae for a simple Schaefer model, or our non-migration fomula when s = 0
+
+# Set parameters
+set.seed(1) # Random seed used in manuscript
+num.spec <- 10 # Number of species to draw from each distribution 
+num.sims <- 100 # Number of species assemblages to simulate
+
+# Set granularity of exploration
+s.interval <- 0.0025
+
+# Define spectra of catch and sparing being explored
+spect.s.special <- 0
+spect.c <- c(0.3*target.MSY.standard, 0.6*target.MSY.standard, 0.9*target.MSY.standard)
+
+# Create results list
+results.list.special <- list()
+
+# Produce results for targeted species
+for (i in seq_along(spect.s.special)){
+  for (j in seq_along(spect.c)){
+    # Produce results
+    targ.n <- abun.catch(rt=target.r,
+                         qt=target.q,
+                         rn=target.r,
+                         qn=target.q,
+                         s=spect.s.special[i],
+                         ct=spect.c[j],
+                         kt=kt)
+    s.value <- spect.s.special[i]
+    c.value <- spect.c[j]
+    
+    # Store results
+    num.eq.df <- cbind.data.frame(targ.n,
+                                  s.value,
+                                  c.value)
+    results.list.special[[paste("s =", s.value,
+                        "c =", c.value,
+                        sep=" ")]] <- num.eq.df
+  }
+}
+
+# Store results
+results.special <- rbindlist(results.list.special)
+
+# Process results
+results.special <- drop_na(results.special)
+
+# Produce results for all species, all assemblages
+list.data.special <- list()
+pb <- txtProgressBar(min = 0, max = num.sims, style = 3)
+for(j in 1:num.sims){
+  setTxtProgressBar(pb, j)
+  cat(" Simulating sample", j, "of", num.sims)
+  all.species <- builder(n = num.spec, 
+                         mean.q = dist.pars$mean.q, 
+                         sd.q = dist.pars$log.sd.q,
+                         mean.r = dist.pars$mean.r, 
+                         sd.r = dist.pars$log.sd.r,
+                         name = dist.pars$class)
+  data.special <- NULL
+  for(i in 1:nrow(all.species)){
+    class <- all.species$class[i]
+    species <- all.species$species[i]
+    catch <- results.special$c.value
+    sparing <- results.special$s.value
+    total <- abun.catch(rt=target.r,
+                        qt=target.q,
+                        rn=all.species$r.value[i],
+                        qn=all.species$q.value[i],
+                        s=sparing,
+                        ct=catch,
+                        kt=kt)
+    res <- cbind.data.frame(class,species,catch,sparing,total)
+    data.special <- rbind.data.frame(data.special, res)
+  }
+  list.data.special[[j]] <- data.special
+}
+close(pb)
+
+# Store results
+data.special <- rbindlist(list.data.special, idcol="sim")
+
+# Combine s = 0 results with migration results
+data <- rbind.data.frame(data,data.special)
+
+# Calculate metrics for individual assemblages
+data <- data %>% 
+  group_by(sparing,catch,sim) %>% 
+  summarise(arith.mean = mean(total),
+            geom.mean = gm.mean(total))
+
+# Find highest and lowest
+# Arithmetic mean
+high.arith.mean <- data
+high.arith.mean <- high.arith.mean %>%
+  group_by(catch,sim) %>%
+  slice_max(arith.mean, n = 1)
+
+low.arith.mean <- data
+low.arith.mean <- low.arith.mean %>%
+  group_by(catch,sim) %>%
+  slice_min(arith.mean, n = 1)
+
+# Geometric mean
+high.geom.mean <- data
+high.geom.mean <- high.geom.mean %>%
+  group_by(catch,sim) %>%
+  slice_max(geom.mean, n = 1)
+
+low.geom.mean <- data
+low.geom.mean <- low.geom.mean %>%
+  group_by(catch,sim) %>%
+  slice_min(geom.mean, n = 1)
+
+# Isolating highest/lowest data to facilitate plotting
+data.t <- data
+high.arith.mean.t <- high.arith.mean
+low.arith.mean.t <- low.arith.mean
+high.geom.mean.t <- high.geom.mean
+low.geom.mean.t <- low.geom.mean
+
+data.ends.t <- data.t %>% 
+  group_by(catch,sim) %>% 
+  filter(sparing == max(sparing))
+
+# Calculate metrics across assemblages
+all.sims <- data %>% 
+  group_by(catch,sparing) %>% 
+  summarise(med.arith.mean = median(arith.mean),
+            medSE.arith.mean = median_se(arith.mean),
+            mean.arith.mean = mean(arith.mean),
+            meanSE.arith.mean = mean_se(arith.mean),
+            med.geom.mean = median(geom.mean),
+            medSE.geom.mean = median_se(geom.mean),
+            mean.geom.mean = mean(geom.mean),
+            meanSE.geom.mean = mean_se(geom.mean))
+
+# Find highest and lowest
+# Mean arithmetic mean
+high.med.arith.mean <- all.sims
+high.med.arith.mean <- high.med.arith.mean %>%
+  group_by(catch) %>%
+  slice_max(med.arith.mean, n = 1)
+
+low.med.arith.mean <- all.sims
+low.med.arith.mean <- low.med.arith.mean %>%
+  group_by(catch) %>%
+  slice_min(med.arith.mean, n = 1)
+
+# Mean arithmetic mean
+high.mean.arith.mean <- all.sims
+high.mean.arith.mean <- high.mean.arith.mean %>%
+  group_by(catch) %>%
+  slice_max(mean.arith.mean, n = 1)
+
+low.mean.arith.mean <- all.sims
+low.mean.arith.mean <- low.mean.arith.mean %>%
+  group_by(catch) %>%
+  slice_min(mean.arith.mean, n = 1)
+
+# Median geometric mean
+high.med.geom.mean <- all.sims
+high.med.geom.mean <- high.med.geom.mean %>%
+  group_by(catch) %>%
+  slice_max(med.geom.mean, n = 1)
+
+low.med.geom.mean <- all.sims
+low.med.geom.mean <- low.med.geom.mean %>%
+  group_by(catch) %>%
+  slice_min(med.geom.mean, n = 1)
+
+# Mean geometric mean
+high.mean.geom.mean <- all.sims
+high.mean.geom.mean <- high.mean.geom.mean %>%
+  group_by(catch) %>%
+  slice_max(mean.geom.mean, n = 1)
+
+low.mean.geom.mean <- all.sims
+low.mean.geom.mean <- low.mean.geom.mean %>%
+  group_by(catch) %>%
+  slice_min(mean.geom.mean, n = 1)
+
+# Isolating highest/lowest to facilitate plotting
+all.sims.t <- all.sims
+high.med.arith.mean.t <- high.med.arith.mean
+low.med.arith.mean.t <- low.med.arith.mean
+high.mean.arith.mean.t <- high.mean.arith.mean
+low.mean.arith.mean.t <- low.mean.arith.mean
+high.med.geom.mean.t <- high.med.geom.mean
+low.med.geom.mean.t <- low.med.geom.mean
+high.mean.geom.mean.t <- high.mean.geom.mean
+low.mean.geom.mean.t <- low.mean.geom.mean
+
+# Plot
+sensA <- ggplot(data.t, aes(x = sparing, y = arith.mean, group = catch/target.MSY.standard)) +
+  geom_line(data = data.t, aes(group=interaction(sim, catch/target.MSY.standard), colour = as.factor(catch/target.MSY.standard)), alpha = 0.20) +
+  geom_line(stat = "summary", fun = "mean", aes(colour = as.factor(catch/target.MSY.standard)), size = 1.05) +
+  geom_point(data = high.mean.arith.mean.t, aes(x = sparing, y = mean.arith.mean, shape = "Highest biodiversity", fill = "Highest biodiversity", colour = as.factor(catch/target.MSY.standard)), size = 4) +
+  geom_point(data = low.mean.arith.mean.t, aes(x = sparing, y = mean.arith.mean, shape = "Lowest biodiversity", fill = "Lowest biodiversity", colour = as.factor(catch/target.MSY.standard)), size = 4) +
+  scale_fill_manual(element_blank(), values = c("Highest biodiversity" = "purple", "Lowest biodiversity" = "red")) +
+  scale_shape_manual(element_blank(), values = c("Highest biodiversity" = 16, "Lowest biodiversity" = 15)) +
+  scale_colour_viridis_d(begin = 0, end = 0.8) +
+  labs(tag = "A", 
+       y = "Biodiversity (arithmetic mean abundance)", 
+       x = TeX("Seascape spared $(\\textit{s})$")) +
+  ylim(0,1) +
+  xlim(0,1) +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  guides(color = FALSE,
+         shape = guide_legend(order = 2),
+         fill = guide_legend(order = 2)) +
+  theme_bw(base_size = 12) +
+  theme(legend.text = element_text(size=12), plot.tag = element_text(size=24))
+sensA
+
+# Geometric mean
+sensB <- ggplot(data.t, aes(x = sparing, y = geom.mean, group = catch/target.MSY.standard)) +
+  geom_line(data = data.t, aes(group=interaction(sim, catch/target.MSY.standard), colour = as.factor(catch/target.MSY.standard)), alpha = 0.20) +
+  geom_line(stat = "summary", fun = "mean", aes(colour = as.factor(catch/target.MSY.standard)), size = 1.05) +
+  geom_point(data = high.mean.geom.mean.t, aes(x = sparing, y = mean.geom.mean, shape = "Highest biodiversity", fill = "Highest biodiversity", colour = as.factor(catch/target.MSY.standard)), size = 4) +
+  geom_point(data = low.mean.geom.mean.t, aes(x = sparing, y = mean.geom.mean, shape = "Lowest biodiversity", fill = "Lowest biodiversity", colour = as.factor(catch/target.MSY.standard)), size = 4) +
+  scale_fill_manual(element_blank(), values = c("Highest biodiversity" = "purple", "Lowest biodiversity" = "red")) +
+  scale_shape_manual(element_blank(), values = c("Highest biodiversity" = 16, "Lowest biodiversity" = 15)) +
+  scale_colour_viridis_d(begin = 0, end = 0.8) +
+  labs(tag = "B", 
+       y = "Biodiversity (geometric mean abundance)", 
+       x = TeX("Seascape spared $(\\textit{s})$")) +
+  ylim(0,1) +
+  xlim(0,1) +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  guides(colour = FALSE,
+         shape = guide_legend(order = 2),
+         fill = guide_legend(order = 2)) +
+  theme_bw(base_size = 12) +
+  theme(legend.text = element_text(size=12), plot.tag = element_text(size=24))
+sensB
+
+# Arrange and save
+sensPlots <- 
+  (sensA + sensB) +
+  plot_layout(guides = "collect") & 
+  theme(legend.position = 'bottom')
+sensPlots
+#ggsave(filename = "figs/dispersal01.pdf", sensPlots, width = 20, height = 14, units = "cm")
+#ggsave(filename = "figs/dispersal01.png", sensPlots, width = 20, height = 14, units = "cm")
+
+# Sens. analysis: model with dispersal m = 0.5 ####
+
+# SECTION DESCRIPTION/NOTES
+# See section title. From examination, only the following pairs of equilibria produce biologically sensible results (i.e. no negative / complex abundances):
+# - Calculating abundance from effort: Eq. 2
+# - Calculating abundance from catch: Eq. 4
+
+# Reset targeted r
+target.r <- malacostraca.mean.r
+target.MSY.standard <- (target.r*kt)/4
+
+# Specify equilibria functions to be used
+# Abundance from catch
+in.catch.eq <- d.catch.eq.in.4
+out.catch.eq <-  d.catch.eq.out.4
+
+# Abundance from effort
+in.abun.eq <- d.eq.in.2
+out.abun.eq <- d.eq.out.2
+tot.abun.eq <- function(r, k, s, q, e, m){
+  in.abun <- Re(in.abun.eq(r, k, s, q, e, m))
+  in.abun[in.abun < 0] <- 0
+  out.abun <- Re(out.abun.eq(r, k, s, q, e, m))
+  out.abun[out.abun < 0] <- 0
+  abun <- in.abun + out.abun
+  abun
+}
+
+# Set parameters
+set.seed(1) # Random seed used in manuscript
+num.spec <- 10 # Number of species to draw from each distribution 
+num.sims <- 100 # Number of species assemblages to simulate
+dispersal <- 0.5 # Dispersal rate of all species
+
+# Set granularity of exploration
+s.interval <- 0.00125
+
+# Define spectra of catch and sparing being explored
+spect.s <- c(0,seq(s.interval,1-s.interval,s.interval))
+spect.c <- c(0.3*target.MSY.standard, 0.6*target.MSY.standard, 0.9*target.MSY.standard)
+
+# Create results list
+results.list <- list()
+
+# Produce results for targeted species
+for (i in seq_along(spect.s)){
+  for (j in seq_along(spect.c)){
+    # Produce results
+    in.pop <- in.catch.eq(r=target.r,
+                          k=kt,
+                          s=spect.s[i],
+                          m=dispersal,
+                          c=spect.c[j])
+    out.pop <- out.catch.eq(r=target.r,
+                            k=kt,
+                            s=spect.s[i],
+                            m=dispersal,
+                            c=spect.c[j])
+    in.pop[Im(in.pop) > 0.00000001] <- NA
+    in.pop[Im(in.pop) < -0.00000001] <- NA
+    out.pop[Im(out.pop) > 0.00000001] <- NA
+    out.pop[Im(out.pop) < -0.00000001] <- NA
+    in.pop[Re(in.pop) < 0] <- NA
+    out.pop[Re(out.pop) < 0] <- NA
+    in.pop <- Re(in.pop)
+    out.pop <- Re(out.pop)
+    targ.n <- in.pop + out.pop
+    
+    s.value <- spect.s[i]
+    c.value <- spect.c[j]
+    
+    # Use out.pop to calculate e.value
+    e.value <- c.value/(target.q*out.pop)
+    
+    # Store results
+    num.eq.df <- cbind.data.frame(targ.n,
+                                  s.value,
+                                  c.value,
+                                  e.value)
+    results.list[[paste("s =", s.value,
+                        "c =", c.value,
+                        "e =", e.value,
+                        sep=" ")]] <- num.eq.df
+  }
+}
+
+# Store results
+results <- rbindlist(results.list)
+
+# Process results
+results <- drop_na(results)
+
+# Produce results for all species, all assemblages
+pb <- txtProgressBar(min = 0, max = num.sims, style = 3)
+list.data <- list()
+for(j in 1:num.sims){
+  setTxtProgressBar(pb, j)
+  cat(" Simulating sample", j, "of", num.sims)
+  all.species <- builder(n = num.spec, 
+                         mean.q = dist.pars$mean.q, 
+                         sd.q = dist.pars$log.sd.q,
+                         mean.r = dist.pars$mean.r, 
+                         sd.r = dist.pars$log.sd.r,
+                         name = dist.pars$class)
+  data <- NULL
+  for(i in 1:nrow(all.species)){
+    class <- all.species$class[i]
+    species <- all.species$species[i]
+    catch <- results$c.value
+    sparing <- results$s.value
+    effort <- results$e.value
+    total <- abun.catch(rt=target.r,
+                        qt=target.q,
+                        rn=all.species$r.value[i],
+                        qn=all.species$q.value[i],
+                        s=sparing,
+                        ct=catch,
+                        kt=kt)
+    total <- tot.abun.eq(r=all.species$r.value[i],
+                         k=kt,
+                         s=sparing, 
+                         q=all.species$q.value[i], 
+                         e=effort, 
+                         m=dispersal)
+    res <- cbind.data.frame(class,species,catch,sparing,total)
+    data <- rbind.data.frame(data, res)
+  }
+  list.data[[j]] <- data
+}
+close(pb)
+
+# Store results
+data <- rbindlist(list.data, idcol="sim")
+
+# Process results
+#data <- drop_na(data)
+beep()
+
+# Highly complex equilibria formula for dispersal case cannot
+# accomodate s = 0
+# However, s = 0 is simply the case in which there is no dispersal
+# and no sparing, i.e., the Schaefer model
+# Therefore values for s = 0 can be supplied using equilibria
+# formulae for a simple Schaefer model, or our non-migration fomula when s = 0
+
+# Set parameters
+set.seed(1) # Random seed used in manuscript
+num.spec <- 10 # Number of species to draw from each distribution 
+num.sims <- 100 # Number of species assemblages to simulate
+
+# Set granularity of exploration
+s.interval <- 0.0025
+
+# Define spectra of catch and sparing being explored
+spect.s.special <- 0
+spect.c <- c(0.3*target.MSY.standard, 0.6*target.MSY.standard, 0.9*target.MSY.standard)
+
+# Create results list
+results.list.special <- list()
+
+# Produce results for targeted species
+for (i in seq_along(spect.s.special)){
+  for (j in seq_along(spect.c)){
+    # Produce results
+    targ.n <- abun.catch(rt=target.r,
+                         qt=target.q,
+                         rn=target.r,
+                         qn=target.q,
+                         s=spect.s.special[i],
+                         ct=spect.c[j],
+                         kt=kt)
+    s.value <- spect.s.special[i]
+    c.value <- spect.c[j]
+    
+    # Store results
+    num.eq.df <- cbind.data.frame(targ.n,
+                                  s.value,
+                                  c.value)
+    results.list.special[[paste("s =", s.value,
+                                "c =", c.value,
+                                sep=" ")]] <- num.eq.df
+  }
+}
+
+# Store results
+results.special <- rbindlist(results.list.special)
+
+# Process results
+results.special <- drop_na(results.special)
+
+# Produce results for all species, all assemblages
+list.data.special <- list()
+pb <- txtProgressBar(min = 0, max = num.sims, style = 3)
+for(j in 1:num.sims){
+  setTxtProgressBar(pb, j)
+  cat(" Simulating sample", j, "of", num.sims)
+  all.species <- builder(n = num.spec, 
+                         mean.q = dist.pars$mean.q, 
+                         sd.q = dist.pars$log.sd.q,
+                         mean.r = dist.pars$mean.r, 
+                         sd.r = dist.pars$log.sd.r,
+                         name = dist.pars$class)
+  data.special <- NULL
+  for(i in 1:nrow(all.species)){
+    class <- all.species$class[i]
+    species <- all.species$species[i]
+    catch <- results.special$c.value
+    sparing <- results.special$s.value
+    total <- abun.catch(rt=target.r,
+                        qt=target.q,
+                        rn=all.species$r.value[i],
+                        qn=all.species$q.value[i],
+                        s=sparing,
+                        ct=catch,
+                        kt=kt)
+    res <- cbind.data.frame(class,species,catch,sparing,total)
+    data.special <- rbind.data.frame(data.special, res)
+  }
+  list.data.special[[j]] <- data.special
+}
+close(pb)
+
+# Store results
+data.special <- rbindlist(list.data.special, idcol="sim")
+
+# Combine s = 0 results with migration results
+data <- rbind.data.frame(data,data.special)
+
+# Calculate metrics for individual assemblages
+data <- data %>% 
+  group_by(sparing,catch,sim) %>% 
+  summarise(arith.mean = mean(total),
+            geom.mean = gm.mean(total))
+
+# Find highest and lowest
+# Arithmetic mean
+high.arith.mean <- data
+high.arith.mean <- high.arith.mean %>%
+  group_by(catch,sim) %>%
+  slice_max(arith.mean, n = 1)
+
+low.arith.mean <- data
+low.arith.mean <- low.arith.mean %>%
+  group_by(catch,sim) %>%
+  slice_min(arith.mean, n = 1)
+
+# Geometric mean
+high.geom.mean <- data
+high.geom.mean <- high.geom.mean %>%
+  group_by(catch,sim) %>%
+  slice_max(geom.mean, n = 1)
+
+low.geom.mean <- data
+low.geom.mean <- low.geom.mean %>%
+  group_by(catch,sim) %>%
+  slice_min(geom.mean, n = 1)
+
+# Isolating highest/lowest data to facilitate plotting
+data.t <- data
+high.arith.mean.t <- high.arith.mean
+low.arith.mean.t <- low.arith.mean
+high.geom.mean.t <- high.geom.mean
+low.geom.mean.t <- low.geom.mean
+
+data.ends.t <- data.t %>% 
+  group_by(catch,sim) %>% 
+  filter(sparing == max(sparing))
+
+# Calculate metrics across assemblages
+all.sims <- data %>% 
+  group_by(catch,sparing) %>% 
+  summarise(med.arith.mean = median(arith.mean),
+            medSE.arith.mean = median_se(arith.mean),
+            mean.arith.mean = mean(arith.mean),
+            meanSE.arith.mean = mean_se(arith.mean),
+            med.geom.mean = median(geom.mean),
+            medSE.geom.mean = median_se(geom.mean),
+            mean.geom.mean = mean(geom.mean),
+            meanSE.geom.mean = mean_se(geom.mean))
+
+# Find highest and lowest
+# Mean arithmetic mean
+high.med.arith.mean <- all.sims
+high.med.arith.mean <- high.med.arith.mean %>%
+  group_by(catch) %>%
+  slice_max(med.arith.mean, n = 1)
+
+low.med.arith.mean <- all.sims
+low.med.arith.mean <- low.med.arith.mean %>%
+  group_by(catch) %>%
+  slice_min(med.arith.mean, n = 1)
+
+# Mean arithmetic mean
+high.mean.arith.mean <- all.sims
+high.mean.arith.mean <- high.mean.arith.mean %>%
+  group_by(catch) %>%
+  slice_max(mean.arith.mean, n = 1)
+
+low.mean.arith.mean <- all.sims
+low.mean.arith.mean <- low.mean.arith.mean %>%
+  group_by(catch) %>%
+  slice_min(mean.arith.mean, n = 1)
+
+# Median geometric mean
+high.med.geom.mean <- all.sims
+high.med.geom.mean <- high.med.geom.mean %>%
+  group_by(catch) %>%
+  slice_max(med.geom.mean, n = 1)
+
+low.med.geom.mean <- all.sims
+low.med.geom.mean <- low.med.geom.mean %>%
+  group_by(catch) %>%
+  slice_min(med.geom.mean, n = 1)
+
+# Mean geometric mean
+high.mean.geom.mean <- all.sims
+high.mean.geom.mean <- high.mean.geom.mean %>%
+  group_by(catch) %>%
+  slice_max(mean.geom.mean, n = 1)
+
+low.mean.geom.mean <- all.sims
+low.mean.geom.mean <- low.mean.geom.mean %>%
+  group_by(catch) %>%
+  slice_min(mean.geom.mean, n = 1)
+
+# Isolating highest/lowest to facilitate plotting
+all.sims.t <- all.sims
+high.med.arith.mean.t <- high.med.arith.mean
+low.med.arith.mean.t <- low.med.arith.mean
+high.mean.arith.mean.t <- high.mean.arith.mean
+low.mean.arith.mean.t <- low.mean.arith.mean
+high.med.geom.mean.t <- high.med.geom.mean
+low.med.geom.mean.t <- low.med.geom.mean
+high.mean.geom.mean.t <- high.mean.geom.mean
+low.mean.geom.mean.t <- low.mean.geom.mean
+
+# Plot
+sensA <- ggplot(data.t, aes(x = sparing, y = arith.mean, group = catch/target.MSY.standard)) +
+  geom_line(data = data.t, aes(group=interaction(sim, catch/target.MSY.standard), colour = as.factor(catch/target.MSY.standard)), alpha = 0.20) +
+  geom_line(stat = "summary", fun = "mean", aes(colour = as.factor(catch/target.MSY.standard)), size = 1.05) +
+  geom_point(data = high.mean.arith.mean.t, aes(x = sparing, y = mean.arith.mean, shape = "Highest biodiversity", fill = "Highest biodiversity", colour = as.factor(catch/target.MSY.standard)), size = 4) +
+  geom_point(data = low.mean.arith.mean.t, aes(x = sparing, y = mean.arith.mean, shape = "Lowest biodiversity", fill = "Lowest biodiversity", colour = as.factor(catch/target.MSY.standard)), size = 4) +
+  scale_fill_manual(element_blank(), values = c("Highest biodiversity" = "purple", "Lowest biodiversity" = "red")) +
+  scale_shape_manual(element_blank(), values = c("Highest biodiversity" = 16, "Lowest biodiversity" = 15)) +
+  scale_colour_viridis_d(begin = 0, end = 0.8) +
+  labs(tag = "A", 
+       y = "Biodiversity (arithmetic mean abundance)", 
+       x = TeX("Seascape spared $(\\textit{s})$")) +
+  ylim(0,1) +
+  xlim(0,1) +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  guides(color = FALSE,
+         shape = guide_legend(order = 2),
+         fill = guide_legend(order = 2)) +
+  theme_bw(base_size = 12) +
+  theme(legend.text = element_text(size=12), plot.tag = element_text(size=24))
+sensA
+
+# Geometric mean
+sensB <- ggplot(data.t, aes(x = sparing, y = geom.mean, group = catch/target.MSY.standard)) +
+  geom_line(data = data.t, aes(group=interaction(sim, catch/target.MSY.standard), colour = as.factor(catch/target.MSY.standard)), alpha = 0.20) +
+  geom_line(stat = "summary", fun = "mean", aes(colour = as.factor(catch/target.MSY.standard)), size = 1.05) +
+  geom_point(data = high.mean.geom.mean.t, aes(x = sparing, y = mean.geom.mean, shape = "Highest biodiversity", fill = "Highest biodiversity", colour = as.factor(catch/target.MSY.standard)), size = 4) +
+  geom_point(data = low.mean.geom.mean.t, aes(x = sparing, y = mean.geom.mean, shape = "Lowest biodiversity", fill = "Lowest biodiversity", colour = as.factor(catch/target.MSY.standard)), size = 4) +
+  scale_fill_manual(element_blank(), values = c("Highest biodiversity" = "purple", "Lowest biodiversity" = "red")) +
+  scale_shape_manual(element_blank(), values = c("Highest biodiversity" = 16, "Lowest biodiversity" = 15)) +
+  scale_colour_viridis_d(begin = 0, end = 0.8) +
+  labs(tag = "B", 
+       y = "Biodiversity (geometric mean abundance)", 
+       x = TeX("Seascape spared $(\\textit{s})$")) +
+  ylim(0,1) +
+  xlim(0,1) +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  guides(colour = FALSE,
+         shape = guide_legend(order = 2),
+         fill = guide_legend(order = 2)) +
+  theme_bw(base_size = 12) +
+  theme(legend.text = element_text(size=12), plot.tag = element_text(size=24))
+sensB
+
+# Arrange and save
+sensPlots <- 
+  (sensA + sensB) +
+  plot_layout(guides = "collect") & 
+  theme(legend.position = 'bottom')
+sensPlots
+#ggsave(filename = "figs/dispersal05.pdf", sensPlots, width = 20, height = 14, units = "cm")
+#ggsave(filename = "figs/dispersal05.png", sensPlots, width = 20, height = 14, units = "cm")
+
+# Sens. analysis: model with dispersal m = 1 ####
+
+# SECTION DESCRIPTION/NOTES
+# See section title. From examination, only the following pairs of equilibria produce biologically sensible results (i.e. no negative / complex abundances):
+# - Calculating abundance from effort: Eq. 2
+# - Calculating abundance from catch: Eq. 4
+
+# Reset targeted r
+target.r <- malacostraca.mean.r
+target.MSY.standard <- (target.r*kt)/4
+
+# Specify equilibria functions to be used
+# Abundance from catch
+in.catch.eq <- d.catch.eq.in.4
+out.catch.eq <-  d.catch.eq.out.4
+
+# Abundance from effort
+in.abun.eq <- d.eq.in.2
+out.abun.eq <- d.eq.out.2
+tot.abun.eq <- function(r, k, s, q, e, m){
+  in.abun <- Re(in.abun.eq(r, k, s, q, e, m))
+  in.abun[in.abun < 0] <- 0
+  out.abun <- Re(out.abun.eq(r, k, s, q, e, m))
+  out.abun[out.abun < 0] <- 0
+  abun <- in.abun + out.abun
+  abun
+}
+
+# Set parameters
+set.seed(1) # Random seed used in manuscript
+num.spec <- 10 # Number of species to draw from each distribution 
+num.sims <- 100 # Number of species assemblages to simulate
+dispersal <- 1 # Dispersal rate of all species
+
+# Set granularity of exploration
+s.interval <- 0.00125
+
+# Define spectra of catch and sparing being explored
+spect.s <- c(0,seq(s.interval,1-s.interval,s.interval))
+spect.c <- c(0.3*target.MSY.standard, 0.6*target.MSY.standard, 0.9*target.MSY.standard)
+
+# Create results list
+results.list <- list()
+
+# Produce results for targeted species
+for (i in seq_along(spect.s)){
+  for (j in seq_along(spect.c)){
+    # Produce results
+    in.pop <- in.catch.eq(r=target.r,
+                          k=kt,
+                          s=spect.s[i],
+                          m=dispersal,
+                          c=spect.c[j])
+    out.pop <- out.catch.eq(r=target.r,
+                            k=kt,
+                            s=spect.s[i],
+                            m=dispersal,
+                            c=spect.c[j])
+    in.pop[Im(in.pop) > 0.00000001] <- NA
+    in.pop[Im(in.pop) < -0.00000001] <- NA
+    out.pop[Im(out.pop) > 0.00000001] <- NA
+    out.pop[Im(out.pop) < -0.00000001] <- NA
+    in.pop[Re(in.pop) < 0] <- NA
+    out.pop[Re(out.pop) < 0] <- NA
+    in.pop <- Re(in.pop)
+    out.pop <- Re(out.pop)
+    targ.n <- in.pop + out.pop
+    
+    s.value <- spect.s[i]
+    c.value <- spect.c[j]
+    
+    # Use out.pop to calculate e.value
+    e.value <- c.value/(target.q*out.pop)
+    
+    # Store results
+    num.eq.df <- cbind.data.frame(targ.n,
+                                  s.value,
+                                  c.value,
+                                  e.value)
+    results.list[[paste("s =", s.value,
+                        "c =", c.value,
+                        "e =", e.value,
+                        sep=" ")]] <- num.eq.df
+  }
+}
+
+# Store results
+results <- rbindlist(results.list)
+
+# Process results
+results <- drop_na(results)
+
+# Produce results for all species, all assemblages
+pb <- txtProgressBar(min = 0, max = num.sims, style = 3)
+list.data <- list()
+for(j in 1:num.sims){
+  setTxtProgressBar(pb, j)
+  cat(" Simulating sample", j, "of", num.sims)
+  all.species <- builder(n = num.spec, 
+                         mean.q = dist.pars$mean.q, 
+                         sd.q = dist.pars$log.sd.q,
+                         mean.r = dist.pars$mean.r, 
+                         sd.r = dist.pars$log.sd.r,
+                         name = dist.pars$class)
+  data <- NULL
+  for(i in 1:nrow(all.species)){
+    class <- all.species$class[i]
+    species <- all.species$species[i]
+    catch <- results$c.value
+    sparing <- results$s.value
+    effort <- results$e.value
+    total <- abun.catch(rt=target.r,
+                        qt=target.q,
+                        rn=all.species$r.value[i],
+                        qn=all.species$q.value[i],
+                        s=sparing,
+                        ct=catch,
+                        kt=kt)
+    total <- tot.abun.eq(r=all.species$r.value[i],
+                         k=kt,
+                         s=sparing, 
+                         q=all.species$q.value[i], 
+                         e=effort, 
+                         m=dispersal)
+    res <- cbind.data.frame(class,species,catch,sparing,total)
+    data <- rbind.data.frame(data, res)
+  }
+  list.data[[j]] <- data
+}
+close(pb)
+
+# Store results
+data <- rbindlist(list.data, idcol="sim")
+
+# Process results
+#data <- drop_na(data)
+beep()
+
+# Highly complex equilibria formula for dispersal case cannot
+# accomodate s = 0
+# However, s = 0 is simply the case in which there is no dispersal
+# and no sparing, i.e., the Schaefer model
+# Therefore values for s = 0 can be supplied using equilibria
+# formulae for a simple Schaefer model, or our non-migration fomula when s = 0
+
+# Set parameters
+set.seed(1) # Random seed used in manuscript
+num.spec <- 10 # Number of species to draw from each distribution 
+num.sims <- 100 # Number of species assemblages to simulate
+
+# Set granularity of exploration
+s.interval <- 0.0025
+
+# Define spectra of catch and sparing being explored
+spect.s.special <- 0
+spect.c <- c(0.3*target.MSY.standard, 0.6*target.MSY.standard, 0.9*target.MSY.standard)
+
+# Create results list
+results.list.special <- list()
+
+# Produce results for targeted species
+for (i in seq_along(spect.s.special)){
+  for (j in seq_along(spect.c)){
+    # Produce results
+    targ.n <- abun.catch(rt=target.r,
+                         qt=target.q,
+                         rn=target.r,
+                         qn=target.q,
+                         s=spect.s.special[i],
+                         ct=spect.c[j],
+                         kt=kt)
+    s.value <- spect.s.special[i]
+    c.value <- spect.c[j]
+    
+    # Store results
+    num.eq.df <- cbind.data.frame(targ.n,
+                                  s.value,
+                                  c.value)
+    results.list.special[[paste("s =", s.value,
+                                "c =", c.value,
+                                sep=" ")]] <- num.eq.df
+  }
+}
+
+# Store results
+results.special <- rbindlist(results.list.special)
+
+# Process results
+results.special <- drop_na(results.special)
+
+# Produce results for all species, all assemblages
+list.data.special <- list()
+pb <- txtProgressBar(min = 0, max = num.sims, style = 3)
+for(j in 1:num.sims){
+  setTxtProgressBar(pb, j)
+  cat(" Simulating sample", j, "of", num.sims)
+  all.species <- builder(n = num.spec, 
+                         mean.q = dist.pars$mean.q, 
+                         sd.q = dist.pars$log.sd.q,
+                         mean.r = dist.pars$mean.r, 
+                         sd.r = dist.pars$log.sd.r,
+                         name = dist.pars$class)
+  data.special <- NULL
+  for(i in 1:nrow(all.species)){
+    class <- all.species$class[i]
+    species <- all.species$species[i]
+    catch <- results.special$c.value
+    sparing <- results.special$s.value
+    total <- abun.catch(rt=target.r,
+                        qt=target.q,
+                        rn=all.species$r.value[i],
+                        qn=all.species$q.value[i],
+                        s=sparing,
+                        ct=catch,
+                        kt=kt)
+    res <- cbind.data.frame(class,species,catch,sparing,total)
+    data.special <- rbind.data.frame(data.special, res)
+  }
+  list.data.special[[j]] <- data.special
+}
+close(pb)
+
+# Store results
+data.special <- rbindlist(list.data.special, idcol="sim")
+
+# Combine s = 0 results with migration results
+data <- rbind.data.frame(data,data.special)
+
+# Calculate metrics for individual assemblages
+data <- data %>% 
+  group_by(sparing,catch,sim) %>% 
+  summarise(arith.mean = mean(total),
+            geom.mean = gm.mean(total))
+
+# Find highest and lowest
+# Arithmetic mean
+high.arith.mean <- data
+high.arith.mean <- high.arith.mean %>%
+  group_by(catch,sim) %>%
+  slice_max(arith.mean, n = 1)
+
+low.arith.mean <- data
+low.arith.mean <- low.arith.mean %>%
+  group_by(catch,sim) %>%
+  slice_min(arith.mean, n = 1)
+
+# Geometric mean
+high.geom.mean <- data
+high.geom.mean <- high.geom.mean %>%
+  group_by(catch,sim) %>%
+  slice_max(geom.mean, n = 1)
+
+low.geom.mean <- data
+low.geom.mean <- low.geom.mean %>%
+  group_by(catch,sim) %>%
+  slice_min(geom.mean, n = 1)
+
+# Isolating highest/lowest data to facilitate plotting
+data.t <- data
+high.arith.mean.t <- high.arith.mean
+low.arith.mean.t <- low.arith.mean
+high.geom.mean.t <- high.geom.mean
+low.geom.mean.t <- low.geom.mean
+
+data.ends.t <- data.t %>% 
+  group_by(catch,sim) %>% 
+  filter(sparing == max(sparing))
+
+# Calculate metrics across assemblages
+all.sims <- data %>% 
+  group_by(catch,sparing) %>% 
+  summarise(med.arith.mean = median(arith.mean),
+            medSE.arith.mean = median_se(arith.mean),
+            mean.arith.mean = mean(arith.mean),
+            meanSE.arith.mean = mean_se(arith.mean),
+            med.geom.mean = median(geom.mean),
+            medSE.geom.mean = median_se(geom.mean),
+            mean.geom.mean = mean(geom.mean),
+            meanSE.geom.mean = mean_se(geom.mean))
+
+# Find highest and lowest
+# Mean arithmetic mean
+high.med.arith.mean <- all.sims
+high.med.arith.mean <- high.med.arith.mean %>%
+  group_by(catch) %>%
+  slice_max(med.arith.mean, n = 1)
+
+low.med.arith.mean <- all.sims
+low.med.arith.mean <- low.med.arith.mean %>%
+  group_by(catch) %>%
+  slice_min(med.arith.mean, n = 1)
+
+# Mean arithmetic mean
+high.mean.arith.mean <- all.sims
+high.mean.arith.mean <- high.mean.arith.mean %>%
+  group_by(catch) %>%
+  slice_max(mean.arith.mean, n = 1)
+
+low.mean.arith.mean <- all.sims
+low.mean.arith.mean <- low.mean.arith.mean %>%
+  group_by(catch) %>%
+  slice_min(mean.arith.mean, n = 1)
+
+# Median geometric mean
+high.med.geom.mean <- all.sims
+high.med.geom.mean <- high.med.geom.mean %>%
+  group_by(catch) %>%
+  slice_max(med.geom.mean, n = 1)
+
+low.med.geom.mean <- all.sims
+low.med.geom.mean <- low.med.geom.mean %>%
+  group_by(catch) %>%
+  slice_min(med.geom.mean, n = 1)
+
+# Mean geometric mean
+high.mean.geom.mean <- all.sims
+high.mean.geom.mean <- high.mean.geom.mean %>%
+  group_by(catch) %>%
+  slice_max(mean.geom.mean, n = 1)
+
+low.mean.geom.mean <- all.sims
+low.mean.geom.mean <- low.mean.geom.mean %>%
+  group_by(catch) %>%
+  slice_min(mean.geom.mean, n = 1)
+
+# Isolating highest/lowest to facilitate plotting
+all.sims.t <- all.sims
+high.med.arith.mean.t <- high.med.arith.mean
+low.med.arith.mean.t <- low.med.arith.mean
+high.mean.arith.mean.t <- high.mean.arith.mean
+low.mean.arith.mean.t <- low.mean.arith.mean
+high.med.geom.mean.t <- high.med.geom.mean
+low.med.geom.mean.t <- low.med.geom.mean
+high.mean.geom.mean.t <- high.mean.geom.mean
+low.mean.geom.mean.t <- low.mean.geom.mean
+
+# Plot
+sensA <- ggplot(data.t, aes(x = sparing, y = arith.mean, group = catch/target.MSY.standard)) +
+  geom_line(data = data.t, aes(group=interaction(sim, catch/target.MSY.standard), colour = as.factor(catch/target.MSY.standard)), alpha = 0.20) +
+  geom_line(stat = "summary", fun = "mean", aes(colour = as.factor(catch/target.MSY.standard)), size = 1.05) +
+  geom_point(data = high.mean.arith.mean.t, aes(x = sparing, y = mean.arith.mean, shape = "Highest biodiversity", fill = "Highest biodiversity", colour = as.factor(catch/target.MSY.standard)), size = 4) +
+  geom_point(data = low.mean.arith.mean.t, aes(x = sparing, y = mean.arith.mean, shape = "Lowest biodiversity", fill = "Lowest biodiversity", colour = as.factor(catch/target.MSY.standard)), size = 4) +
+  scale_fill_manual(element_blank(), values = c("Highest biodiversity" = "purple", "Lowest biodiversity" = "red")) +
+  scale_shape_manual(element_blank(), values = c("Highest biodiversity" = 16, "Lowest biodiversity" = 15)) +
+  scale_colour_viridis_d(begin = 0, end = 0.8) +
+  labs(tag = "A", 
+       y = "Biodiversity (arithmetic mean abundance)", 
+       x = TeX("Seascape spared $(\\textit{s})$")) +
+  ylim(0,1) +
+  xlim(0,1) +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  guides(color = FALSE,
+         shape = guide_legend(order = 2),
+         fill = guide_legend(order = 2)) +
+  theme_bw(base_size = 12) +
+  theme(legend.text = element_text(size=12), plot.tag = element_text(size=24))
+sensA
+
+# Geometric mean
+sensB <- ggplot(data.t, aes(x = sparing, y = geom.mean, group = catch/target.MSY.standard)) +
+  geom_line(data = data.t, aes(group=interaction(sim, catch/target.MSY.standard), colour = as.factor(catch/target.MSY.standard)), alpha = 0.20) +
+  geom_line(stat = "summary", fun = "mean", aes(colour = as.factor(catch/target.MSY.standard)), size = 1.05) +
+  geom_point(data = high.mean.geom.mean.t, aes(x = sparing, y = mean.geom.mean, shape = "Highest biodiversity", fill = "Highest biodiversity", colour = as.factor(catch/target.MSY.standard)), size = 4) +
+  geom_point(data = low.mean.geom.mean.t, aes(x = sparing, y = mean.geom.mean, shape = "Lowest biodiversity", fill = "Lowest biodiversity", colour = as.factor(catch/target.MSY.standard)), size = 4) +
+  scale_fill_manual(element_blank(), values = c("Highest biodiversity" = "purple", "Lowest biodiversity" = "red")) +
+  scale_shape_manual(element_blank(), values = c("Highest biodiversity" = 16, "Lowest biodiversity" = 15)) +
+  scale_colour_viridis_d(begin = 0, end = 0.8) +
+  labs(tag = "B", 
+       y = "Biodiversity (geometric mean abundance)", 
+       x = TeX("Seascape spared $(\\textit{s})$")) +
+  ylim(0,1) +
+  xlim(0,1) +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  guides(colour = FALSE,
+         shape = guide_legend(order = 2),
+         fill = guide_legend(order = 2)) +
+  theme_bw(base_size = 12) +
+  theme(legend.text = element_text(size=12), plot.tag = element_text(size=24))
+sensB
+
+# Arrange and save
+sensPlots <- 
+  (sensA + sensB) +
+  plot_layout(guides = "collect") & 
+  theme(legend.position = 'bottom')
+sensPlots
+#ggsave(filename = "figs/dispersal1.pdf", sensPlots, width = 20, height = 14, units = "cm")
+#ggsave(filename = "figs/dispersal1.png", sensPlots, width = 20, height = 14, units = "cm")
 
 # Illustrative methods figures ####
 
