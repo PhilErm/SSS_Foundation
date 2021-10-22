@@ -4,7 +4,7 @@
 Produces the various analyses and figures associated with "Meeting wild-caught seafood demand at least cost to biodiversity".
 
 ## How to use
-For the majority of analyses and figures, run 'mainAnalysis.R'. To ensure other scripts ('parameters.R' and 'functions.R') can be called from 'mainAnalysis.R', you may need to configure your working directory.
+For the majority of analyses and figures, run 'mainAnalysis.R'. To ensure other scripts (e.g. 'parameters.R' and 'functions.R') can be called from 'mainAnalysis.R', you may need to configure your working directory.
 
 For the analysis of real-world fisheries, run 'fisheriesAnalysis.R' after obtaining the data used with the script ('ProjectionData.csv'; obtainable seperately below) in the working directory.
 
