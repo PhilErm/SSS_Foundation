@@ -3,14 +3,16 @@
 # Script for undertaking real-world fisheries analysis in
 # "Meeting wild-caught seafood demand at least cost to biodiversity"
 
+# Simulation details
+
 # Load packages ####
 
 library(tidyverse)
 
 # Load scripts ####
 
-source("scripts/parameters.R")
-source("scripts/functions.R")
+source("Code/scripts/parameters.R")
+source("Code/scripts/functions.R")
 
 # Load data ####
 
@@ -32,11 +34,11 @@ data <- read.csv("data/costelloData/m_capture_data/ProjectionData.csv") # Modify
 
 proc.data <- data %>%
   filter(Year == 2012) %>% # Only year of historical data
-  filter(FvFmsy <= 1) %>%  # Only well managed fisheries
-  filter(SpeciesCatName == "Crabs, sea-spiders" |
+  filter(FvFmsy <= 1) %>%  # Only well-regulated fisheries
+  filter(SpeciesCatName == "Crabs, sea-spiders" | # Only Malacostraca fisheries
            SpeciesCatName == "King crabs, squat-lobsters" |
            SpeciesCatName == "Lobsters, spiny-rock lobsters" |
-           SpeciesCatName == "Shrimps, prawns") # Only Malacostraca fisheries
+           SpeciesCatName == "Shrimps, prawns")
 
 ## Step 2. Identify trawl fisheries ####
 
@@ -153,7 +155,7 @@ dist.pars$log.sd.r <- sd.from.lower(dist.pars$mean.r, dist.pars$lowci.r)
 
 # Set parameters
 num.spec <- 10 # Number of species to draw from each distribution 
-num.sims <- 100 # Number of species assemblages to simulate
+num.sims <- 250 # Number of species assemblages to simulate
 
 # Generate assemblages
 set.seed(1) # Random seed used in manuscript
@@ -215,10 +217,12 @@ View(data) # For filling table in appendix
 # Diagnostics
 hist(outcomes) # Threshold of each assemblage
 hist(eq.data$CvCmsy.eq.prac) # C/C_MSY of each fishery to compare with thresholds
+mean(eq.data$CvCmsy.eq.prac) # Mean C/C_MSY taken
 hist(data$num.req.sparing) # Number of thresholds each C/C_MSY exceeds
-mean(data$num.req.sparing) # Mean number of thresholds each C/C_MSY exceeds
+mean <- mean(data$num.req.sparing) # Mean number of thresholds each C/C_MSY exceeds
 sd(data$num.req.sparing) # SD of number of thresholds each C/C_MSY exceeds
-std <- function(x) sd(x)/sqrt(length(x))
-std(data$num.req.sparing) # SE of number of thresholds each C/C_MSY exceeds
+std <- function(x) sd(x)/sqrt(length(x)) # Function for calculating SE
+sem <-std(data$num.req.sparing) # SE of number of thresholds each C/C_MSY exceeds
+CI <- sem*1.96 # 95% confidence interval
 sum(data$num.req.sparing>(num.sims/2)) # Number of fisheries that require sparing under majority of assemblages
 sum(data$num.req.sparing>(num.sims/2))/length(data$num.req.sparing) # Proportion of fisheries that require sparing under majority of assemblages

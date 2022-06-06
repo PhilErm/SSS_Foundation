@@ -98,3 +98,8 @@ abun.catch <- function(rt,qt,rn,qn,s,ct,kt){
 gm.mean <- function(x){
   prod(x)^(1/length(x))
 }
+
+# Standard error
+std_mean <- function(x){
+  sd(x)/sqrt(length(x))
+}

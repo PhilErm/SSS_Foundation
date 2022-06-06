@@ -1,6 +1,9 @@
 # Script details ####
 
-# Script with functions specific to model with dispersal for "Meeting wild-caught seafood demand at least cost to biodiversity"
+# Script with functions specific to model with dispersal in
+# "Meeting wild-caught seafood demand at least cost to biodiversity"
+
+# Equilibria were found using Mathematica
 
 # Help R process complex numbers ####
 
@@ -1414,3 +1417,16 @@ d.catch.eq.in.4 <- function(r, k, s, m, c){
                                                                                                                                                                                                                                                                                                                                                                                k^3*m*r^2*s^4)^2 + 108*((-k)*m*r^2*s + k*r^3*s + k*m*r^2*s^2)^2*((-c)*k^3*m^2*s^4 + c*k^3*m^2*s^5) + 72*r^3*((-k^2)*m^2*r*s^2 + 3*k^2*m*r^2*s^2 - 
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               k^2*r^3*s^2 + k^2*m^2*r*s^3 - 3*k^2*m*r^2*s^3)*((-c)*k^3*m^2*s^4 + c*k^3*m^2*s^5))^2))^(1/3))))
 } 
+
+# Combined abundance from effort for biologically sound equilibria ####
+
+in.abun.eq <- d.eq.in.2
+out.abun.eq <- d.eq.out.2
+tot.abun.eq <- function(r, k, s, q, e, m){
+  in.abun <- Re(in.abun.eq(r, k, s, q, e, m))
+  in.abun[in.abun < 0] <- 0
+  out.abun <- Re(out.abun.eq(r, k, s, q, e, m))
+  out.abun[out.abun < 0] <- 0
+  abun <- in.abun + out.abun
+  abun
+}
