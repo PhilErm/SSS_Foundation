@@ -2498,7 +2498,7 @@ ggplot_build(surv)
 extirpations <- ggplot(new.data, aes(x = extinct, y = as.factor(catch/target.MSY.standard))) + 
   geom_density_ridges2(stat = "binline", binwidth = 1, scale = 0.95) +
   labs(y = TeX("Equilibrium catch of targeted species $(\\textit{C/C_{MSY}})$"),
-       x = "Proportion of non-targeted species extirpated without a no-take MPA") +
+       x = "Proportion of non-targeted species extirpated without an MPA") +
   scale_x_continuous(breaks = c(0, 4, 8, 12), labels = c("0.00", "0.05", "0.10", "0.15")) +
   scale_y_discrete(
     labels = c(0.3,0.6,0.68,0.9,1)) +
@@ -5868,3 +5868,611 @@ sensPlots
 
 #ggsave(filename = "figs/sensDoubler.pdf", sensPlots, width = 20, height = 20, units = "cm")
 #ggsave(filename = "figs/sensDoubler.png", sensPlots, width = 20, height = 20, units = "cm")
+
+# Maximum sparing versus catch ####
+
+# SECTION DESCRIPTION/NOTES
+# Modified sparing/sharing code to determine the maximum sparing that can still support the catch target.
+
+## Without dispersal ####
+
+# Set parameters
+set.seed(1) # Random seed used in manuscript
+num.spec <- 10 # Number of species to draw from each distribution 
+num.sims <- 250 # Number of species assemblages to simulate
+
+# Set granularity of exploration
+s.interval <- 0.0025
+c.interval <- target.MSY.standard/40
+
+# Define spectra of catch and sparing being explored
+spect.s <- c(0,seq(s.interval,1-s.interval,s.interval))
+#spect.c <- c(0.3*target.MSY.standard, 0.6*target.MSY.standard, 0.9*target.MSY.standard)
+spect.c <- c(0,seq(c.interval,target.MSY.standard-c.interval,c.interval),target.MSY.standard)
+
+# Create results list
+results.list <- list()
+
+# Produce results for targeted species
+for (i in seq_along(spect.s)){
+  for (j in seq_along(spect.c)){
+    # Produce results
+    targ.n <- abun.catch(rt=target.r,
+                         qt=target.q,
+                         rn=target.r,
+                         qn=target.q,
+                         s=spect.s[i],
+                         ct=spect.c[j],
+                         kt=kt)
+    s.value <- spect.s[i]
+    c.value <- spect.c[j]
+    
+    # Store results
+    num.eq.df <- cbind.data.frame(targ.n,
+                                  s.value,
+                                  c.value)
+    results.list[[paste("s =", s.value,
+                        "c =", c.value,
+                        sep=" ")]] <- num.eq.df
+  }
+}
+
+# Store results
+results <- rbindlist(results.list)
+
+# Process results
+results <- drop_na(results)
+
+# Plot maximum sparing versus catch
+results <- results %>% 
+  group_by(c.value) %>% 
+  mutate(s.value = max(s.value))
+no.disp.results <- results
+
+ggplot(results, aes(x = c.value/target.MSY.standard, y = s.value)) +
+  geom_line() +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  geom_vline(xintercept = 0, linetype = "dotted") +
+  theme_bw(base_size = 12) +
+  labs(y = TeX("Maximum proportion of seascape in MPA $(\\textit{s})$"), 
+       x = TeX("Equib. catch of targeted species $(\\textit{C/C_{MSY}})$")) +
+  theme(legend.text = element_text(size=12), plot.tag = element_text(size=24), plot.title = element_text(hjust = 0.5))
+
+## With dispersal ####
+
+# Reset targeted r
+target.r <- malacostraca.mean.r
+target.MSY.standard <- (target.r*kt)/4
+
+# Specify equilibria functions to be used
+# Abundance from catch
+in.catch.eq <- d.catch.eq.in.4
+out.catch.eq <-  d.catch.eq.out.4
+
+# Set parameters
+set.seed(1) # Random seed used in manuscript
+num.spec <- 10 # Number of species to draw from each distribution 
+num.sims <- 250 # Number of species assemblages to simulate
+dispersal <- 0.3 # Dispersal rate of all species
+
+# Set granularity of exploration
+s.interval <- 0.0025
+c.interval <- target.MSY.standard/40
+
+# Define spectra of catch and sparing being explored
+spect.s <- c(0,seq(s.interval,1-s.interval,s.interval))
+#spect.c <- c(0.3*target.MSY.standard, 0.6*target.MSY.standard, 0.9*target.MSY.standard)
+spect.c <- c(0,seq(c.interval,target.MSY.standard-c.interval,c.interval),target.MSY.standard)
+
+# Create results list
+results.list <- list()
+
+# Produce results for targeted species
+for (i in seq_along(spect.s)){
+  for (j in seq_along(spect.c)){
+    # Produce results
+    in.pop <- in.catch.eq(r=target.r,
+                          k=kt,
+                          s=spect.s[i],
+                          m=dispersal,
+                          c=spect.c[j])
+    out.pop <- out.catch.eq(r=target.r,
+                            k=kt,
+                            s=spect.s[i],
+                            m=dispersal,
+                            c=spect.c[j])
+    in.pop[Im(in.pop) > 0.00000001] <- NA
+    in.pop[Im(in.pop) < -0.00000001] <- NA
+    out.pop[Im(out.pop) > 0.00000001] <- NA
+    out.pop[Im(out.pop) < -0.00000001] <- NA
+    in.pop[Re(in.pop) < 0] <- NA
+    out.pop[Re(out.pop) < 0] <- NA
+    in.pop <- Re(in.pop)
+    out.pop <- Re(out.pop)
+    targ.n <- in.pop + out.pop
+    
+    s.value <- spect.s[i]
+    c.value <- spect.c[j]
+    
+    # Use out.pop to calculate e.value
+    e.value <- c.value/(target.q*out.pop)
+    
+    # Store results
+    num.eq.df <- cbind.data.frame(targ.n,
+                                  s.value,
+                                  c.value,
+                                  e.value)
+    results.list[[paste("s =", s.value,
+                        "c =", c.value,
+                        "e =", e.value,
+                        sep=" ")]] <- num.eq.df
+  }
+}
+
+# Store results
+results <- rbindlist(results.list)
+
+# Process results
+results <- drop_na(results)
+
+# Highly complex equilibria formula for dispersal case cannot
+# accommodate s = 0
+# However, s = 0 is simply the case in which there is no dispersal
+# and no sparing, i.e., the Schaefer model
+# Therefore values for s = 0 can be supplied using equilibria
+# formulae for a simple Schaefer model, or our non-migration formula when s = 0
+
+# Set parameters
+set.seed(1) # Random seed used in manuscript
+num.spec <- 10 # Number of species to draw from each distribution 
+
+# Set granularity of exploration
+s.interval <- 0.0025
+c.interval <- target.MSY.standard/40
+
+# Define spectra of catch and sparing being explored
+spect.s.special <- c(0,seq(s.interval,1-s.interval,s.interval))
+#spect.c <- c(0.3*target.MSY.standard, 0.6*target.MSY.standard, 0.9*target.MSY.standard)
+spect.c <- c(0,seq(c.interval,target.MSY.standard-c.interval,c.interval),target.MSY.standard)
+
+# Create results list
+results.list.special <- list()
+
+# Produce results for targeted species
+for (i in seq_along(spect.s.special)){
+  for (j in seq_along(spect.c)){
+    # Produce results
+    targ.n <- abun.catch(rt=target.r,
+                         qt=target.q,
+                         rn=target.r,
+                         qn=target.q,
+                         s=spect.s.special[i],
+                         ct=spect.c[j],
+                         kt=kt)
+    s.value <- spect.s.special[i]
+    c.value <- spect.c[j]
+    
+    # Store results
+    num.eq.df <- cbind.data.frame(targ.n,
+                                  s.value,
+                                  c.value)
+    results.list.special[[paste("s =", s.value,
+                                "c =", c.value,
+                                sep=" ")]] <- num.eq.df
+  }
+}
+
+# Store results
+results.special <- rbindlist(results.list.special)
+
+# Process results
+results.special <- drop_na(results.special)
+
+# Drop e.value column so that data frames can be bound
+results <- results[,!"e.value"]
+
+# Combine s = 0 results with migration results
+results <- rbind.data.frame(results,results.special)
+
+# Plot maximum sparing versus catch
+results <- results %>% 
+  group_by(c.value) %>% 
+  mutate(s.value = max(s.value))
+disp.results <- results
+
+# Combine dispersal and no-dispersal results
+results.t <- bind_rows(no.disp.results, disp.results, .id = "dispersal")
+
+# Plot results
+maxSparePlot <- ggplot(results.t, aes(x = c.value/target.MSY.standard, y = s.value, colour = dispersal, group = dispersal)) +
+  geom_line() +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  geom_vline(xintercept = 0, linetype = "dotted") +
+  scale_colour_manual(name = element_blank(), label = c("Without dispersal", "With dispersal"), values = c("#440154FF", "#9FDA3AFF")) +
+  theme_bw(base_size = 12) +
+  labs(y = TeX("Maximum proportion of seascape in MPA $(\\textit{s})$"), 
+       x = TeX("Equib. catch of targeted species $(\\textit{C/C_{MSY}})$")) +
+  theme(legend.text = element_text(size=12), plot.tag = element_text(size=24), plot.title = element_text(hjust = 0.5))
+maxSparePlot
+
+# Arrange and save
+#ggsave(filename = "figs/maxSparePlot.pdf", maxSparePlot, width = 20, height = 20, units = "cm")
+#ggsave(filename = "figs/maxSparePlot.png", maxSparePlot, width = 20, height = 20, units = "cm")
+
+# Catch versus species extirpated versus sparing ####
+
+# SECTION DESCRIPTION/NOTES
+# Code for plotting catch versus species extirpated versus sparing.
+
+## Without dispersal ####
+
+# Set parameters
+set.seed(1) # Random seed used in manuscript
+num.spec <- 10 # Number of species to draw from each distribution 
+num.sims <- 250 # Number of species assemblages to simulate
+
+# Set granularity of exploration
+s.interval <- 0.025
+c.interval <- target.MSY.standard/20
+
+# Define spectra of catch and sparing being explored
+spect.s <- c(0,seq(s.interval,1-s.interval,s.interval))
+#spect.c <- c(0.3*target.MSY.standard, 0.6*target.MSY.standard, 0.9*target.MSY.standard)
+spect.c <- c(0,seq(c.interval,target.MSY.standard-c.interval,c.interval),target.MSY.standard)
+
+# Create results list
+results.list <- list()
+
+# Produce results for targeted species
+for (i in seq_along(spect.s)){
+  for (j in seq_along(spect.c)){
+    # Produce results
+    targ.n <- abun.catch(rt=target.r,
+                         qt=target.q,
+                         rn=target.r,
+                         qn=target.q,
+                         s=spect.s[i],
+                         ct=spect.c[j],
+                         kt=kt)
+    s.value <- spect.s[i]
+    c.value <- spect.c[j]
+    
+    # Store results
+    num.eq.df <- cbind.data.frame(targ.n,
+                                  s.value,
+                                  c.value)
+    results.list[[paste("s =", s.value,
+                        "c =", c.value,
+                        sep=" ")]] <- num.eq.df
+  }
+}
+
+# Store results
+results <- rbindlist(results.list)
+
+# Process results
+results <- drop_na(results)
+
+# Produce results for all species, all assemblages
+list.data <- list()
+pb <- txtProgressBar(min = 0, max = num.sims, style = 3)
+for(j in 1:num.sims){
+  setTxtProgressBar(pb, j)
+  cat(" Simulating sample", j, "of", num.sims)
+  all.species <- builder(n = num.spec, 
+                         mean.q = dist.pars$mean.q, 
+                         sd.q = dist.pars$log.sd.q,
+                         mean.r = dist.pars$mean.r, 
+                         sd.r = dist.pars$log.sd.r,
+                         name = dist.pars$class)
+  data <- NULL
+  for(i in 1:nrow(all.species)){
+    class <- all.species$class[i]
+    species <- all.species$species[i]
+    catch <- results$c.value
+    sparing <- results$s.value
+    total <- abun.catch(rt=target.r,
+                        qt=target.q,
+                        rn=all.species$r.value[i],
+                        qn=all.species$q.value[i],
+                        s=sparing,
+                        ct=catch,
+                        kt=kt)
+    res <- cbind.data.frame(class,species,catch,sparing,total)
+    data <- rbind.data.frame(data, res)
+  }
+  list.data[[j]] <- data
+}
+close(pb)
+
+# Store results
+data <- rbindlist(list.data, idcol="sim")
+
+# Process results
+#data <- drop_na(data)
+beep()
+
+# Calculate extirpations
+# Per sim, count the number of species that are extirpated
+new.data <- data %>% group_by(sparing, catch, sim) %>% 
+  summarise(extinct = sum(total == 0),
+            alive = sum(total != 0)) %>% 
+  group_by(sparing, catch) %>% 
+  summarise(mean.extinct = mean(extinct))
+new.data.no.disp <- new.data
+
+## With dispersal ####
+
+# Reset targeted r
+target.r <- malacostraca.mean.r
+target.MSY.standard <- (target.r*kt)/4
+
+# Specify equilibria functions to be used
+# Abundance from catch
+in.catch.eq <- d.catch.eq.in.4
+out.catch.eq <-  d.catch.eq.out.4
+
+# Set parameters
+set.seed(1) # Random seed used in manuscript
+num.spec <- 10 # Number of species to draw from each distribution 
+num.sims <- 250 # Number of species assemblages to simulate
+dispersal <- 0.3 # Dispersal rate of all species
+
+# Set granularity of exploration
+s.interval <- 0.025
+c.interval <- target.MSY.standard/20
+
+# Define spectra of catch and sparing being explored
+spect.s <- c(0,seq(s.interval,1-s.interval,s.interval))
+#spect.c <- c(0.3*target.MSY.standard, 0.6*target.MSY.standard, 0.9*target.MSY.standard)
+spect.c <- c(0,seq(c.interval,target.MSY.standard-c.interval,c.interval),target.MSY.standard)
+
+# Create results list
+results.list <- list()
+
+# Produce results for targeted species
+for (i in seq_along(spect.s)){
+  for (j in seq_along(spect.c)){
+    # Produce results
+    in.pop <- in.catch.eq(r=target.r,
+                          k=kt,
+                          s=spect.s[i],
+                          m=dispersal,
+                          c=spect.c[j])
+    out.pop <- out.catch.eq(r=target.r,
+                            k=kt,
+                            s=spect.s[i],
+                            m=dispersal,
+                            c=spect.c[j])
+    in.pop[Im(in.pop) > 0.00000001] <- NA
+    in.pop[Im(in.pop) < -0.00000001] <- NA
+    out.pop[Im(out.pop) > 0.00000001] <- NA
+    out.pop[Im(out.pop) < -0.00000001] <- NA
+    in.pop[Re(in.pop) < 0] <- NA
+    out.pop[Re(out.pop) < 0] <- NA
+    in.pop <- Re(in.pop)
+    out.pop <- Re(out.pop)
+    targ.n <- in.pop + out.pop
+    
+    s.value <- spect.s[i]
+    c.value <- spect.c[j]
+    
+    # Use out.pop to calculate e.value
+    e.value <- c.value/(target.q*out.pop)
+    
+    # Store results
+    num.eq.df <- cbind.data.frame(targ.n,
+                                  s.value,
+                                  c.value,
+                                  e.value)
+    results.list[[paste("s =", s.value,
+                        "c =", c.value,
+                        "e =", e.value,
+                        sep=" ")]] <- num.eq.df
+  }
+}
+
+# Store results
+results <- rbindlist(results.list)
+
+# Process results
+results <- drop_na(results)
+
+# Produce results for all species, all assemblages
+pb <- txtProgressBar(min = 0, max = num.sims, style = 3)
+list.data <- list()
+for(j in 1:num.sims){
+  setTxtProgressBar(pb, j)
+  cat(" Simulating sample", j, "of", num.sims)
+  all.species <- builder(n = num.spec, 
+                         mean.q = dist.pars$mean.q, 
+                         sd.q = dist.pars$log.sd.q,
+                         mean.r = dist.pars$mean.r, 
+                         sd.r = dist.pars$log.sd.r,
+                         name = dist.pars$class)
+  data <- NULL
+  for(i in 1:nrow(all.species)){
+    class <- all.species$class[i]
+    species <- all.species$species[i]
+    catch <- results$c.value
+    sparing <- results$s.value
+    effort <- results$e.value
+    # total <- abun.catch(rt=target.r,
+    #                     qt=target.q,
+    #                     rn=all.species$r.value[i],
+    #                     qn=all.species$q.value[i],
+    #                     s=sparing,
+    #                     ct=catch,
+    #                     kt=kt)
+    total <- tot.abun.eq(r=all.species$r.value[i],
+                         k=kt,
+                         s=sparing, 
+                         q=all.species$q.value[i], 
+                         e=effort, 
+                         m=dispersal)
+    res <- cbind.data.frame(class,species,catch,sparing,total)
+    data <- rbind.data.frame(data, res)
+  }
+  list.data[[j]] <- data
+}
+close(pb)
+
+# Store results
+data <- rbindlist(list.data, idcol="sim")
+
+# Process results
+#data <- drop_na(data)
+beep()
+
+# Highly complex equilibria formula for dispersal case cannot
+# accommodate s = 0
+# However, s = 0 is simply the case in which there is no dispersal
+# and no sparing, i.e., the Schaefer model
+# Therefore values for s = 0 can be supplied using equilibria
+# formulae for a simple Schaefer model, or our non-migration formula when s = 0
+
+# Set parameters
+set.seed(1) # Random seed used in manuscript
+num.spec <- 10 # Number of species to draw from each distribution 
+
+# Set granularity of exploration
+s.interval <- 0.025
+c.interval <- target.MSY.standard/20
+
+# Define spectra of catch and sparing being explored
+spect.s.special <- c(0,seq(s.interval,1-s.interval,s.interval))
+#spect.c <- c(0.3*target.MSY.standard, 0.6*target.MSY.standard, 0.9*target.MSY.standard)
+spect.c <- c(0,seq(c.interval,target.MSY.standard-c.interval,c.interval),target.MSY.standard)
+
+# Create results list
+results.list.special <- list()
+
+# Produce results for targeted species
+for (i in seq_along(spect.s.special)){
+  for (j in seq_along(spect.c)){
+    # Produce results
+    targ.n <- abun.catch(rt=target.r,
+                         qt=target.q,
+                         rn=target.r,
+                         qn=target.q,
+                         s=spect.s.special[i],
+                         ct=spect.c[j],
+                         kt=kt)
+    s.value <- spect.s.special[i]
+    c.value <- spect.c[j]
+    
+    # Store results
+    num.eq.df <- cbind.data.frame(targ.n,
+                                  s.value,
+                                  c.value)
+    results.list.special[[paste("s =", s.value,
+                                "c =", c.value,
+                                sep=" ")]] <- num.eq.df
+  }
+}
+
+# Store results
+results.special <- rbindlist(results.list.special)
+
+# Process results
+results.special <- drop_na(results.special)
+
+# Produce results for all species, all assemblages
+list.data.special <- list()
+pb <- txtProgressBar(min = 0, max = num.sims, style = 3)
+for(j in 1:num.sims){
+  setTxtProgressBar(pb, j)
+  cat(" Simulating sample", j, "of", num.sims)
+  all.species <- builder(n = num.spec, 
+                         mean.q = dist.pars$mean.q, 
+                         sd.q = dist.pars$log.sd.q,
+                         mean.r = dist.pars$mean.r, 
+                         sd.r = dist.pars$log.sd.r,
+                         name = dist.pars$class)
+  data.special <- NULL
+  for(i in 1:nrow(all.species)){
+    class <- all.species$class[i]
+    species <- all.species$species[i]
+    catch <- results.special$c.value
+    sparing <- results.special$s.value
+    total <- abun.catch(rt=target.r,
+                        qt=target.q,
+                        rn=all.species$r.value[i],
+                        qn=all.species$q.value[i],
+                        s=sparing,
+                        ct=catch,
+                        kt=kt)
+    res <- cbind.data.frame(class,species,catch,sparing,total)
+    data.special <- rbind.data.frame(data.special, res)
+  }
+  list.data.special[[j]] <- data.special
+}
+close(pb)
+
+# Store results
+data.special <- rbindlist(list.data.special, idcol="sim")
+
+# Combine s = 0 results with migration results
+data <- rbind.data.frame(data,data.special)
+
+# Calculate extirpations
+# Per sim, count the number of species that are extirpated
+new.data <- data %>% group_by(sparing, catch, sim) %>% 
+  summarise(extinct = sum(total == 0),
+            alive = sum(total != 0)) %>% 
+  group_by(sparing, catch) %>% 
+  summarise(mean.extinct = mean(extinct))
+new.data.disp <- new.data
+
+# Combine dispersal and no-dispersal results
+results.t <- bind_rows(new.data.no.disp, new.data.disp, .id = "dispersal")
+
+# Plot
+disp.labs <- c("Without dispersal","With dispersal")
+names(disp.labs) <- c(1,2)
+
+# Smallest possible MPA that minimises extirpations
+# smallestMPA <- ggplot(results.t, aes(x = as.factor(catch/target.MSY.standard), y = sparing, fill = mean.extinct, colour = mean.extinct)) +
+#   geom_tile() +
+#   scale_fill_viridis_c(name = "Mean extirpated species") +
+#   scale_colour_viridis_c(name = "Mean extirpated species") +
+#   new_scale_color() + # Data below will require a new colour scale
+#   geom_line(data = results.z, aes(x = as.factor(catch/target.MSY.standard), y = sparing, group = dispersal, colour = "Smallest MPA to minimise extirpations")) +
+#   scale_colour_manual(element_blank(), values = c("Smallest MPA to minimise extirpations" = "red")) +
+#   facet_wrap(dispersal~., labeller = labeller(dispersal = disp.labs)) +
+#   labs(y = TeX("Seascape in MPA $(\\textit{s})$"),
+#        x = TeX("Equib. catch of targeted species $(\\textit{C/C_{MSY}})$")) +
+#   scale_x_discrete(
+#     labels = function(x) {
+#       x[!(seq_along(x) %% (2) == 1)] <- ""
+#       x
+#     }
+#   ) +
+#   theme_bw()
+# smallestMPA
+
+# Extract the relationship between extirpated species and catch at particular levels of sparing
+results.d <- results.t %>% 
+  filter(near(sparing, 0, tol = .Machine$double.eps^0.5) |
+           near(sparing, 0.1, tol = .Machine$double.eps^0.5) |
+           near(sparing, 0.2, tol = .Machine$double.eps^0.5) |
+           near(sparing, 0.3, tol = .Machine$double.eps^0.5) |
+           near(sparing, 0.4, tol = .Machine$double.eps^0.5) |
+           near(sparing, 0.5, tol = .Machine$double.eps^0.5) |
+           near(sparing, 0.6, tol = .Machine$double.eps^0.5) |
+           near(sparing, 0.7, tol = .Machine$double.eps^0.5) |
+           near(sparing, 0.8, tol = .Machine$double.eps^0.5) |
+           near(sparing, 0.9, tol = .Machine$double.eps^0.5))
+
+extirpCatchTrade <- ggplot(results.d, aes(x = catch/target.MSY.standard, y = mean.extinct, colour = as.factor(sparing), group = as.factor(sparing))) +
+  geom_line() +
+  facet_wrap(dispersal~., labeller = labeller(dispersal = disp.labs)) +
+  scale_colour_viridis_d(name = TeX("Seascape in MPA $(\\textit{s})$")) +
+  labs(y = "Mean extirpated species",
+       x = TeX("Equib. catch of targeted species $(\\textit{C/C_{MSY}})$")) +
+  theme_bw()
+extirpCatchTrade
+
+# Arrange and save
+#ggsave(filename = "figs/extirpCatchTrade.pdf", extirpCatchTrade, width = 20, height = 12, units = "cm")
+#ggsave(filename = "figs/extirpCatchTrade.png", extirpCatchTrade, width = 20, height = 12, units = "cm")
