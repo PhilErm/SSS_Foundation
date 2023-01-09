@@ -2388,7 +2388,7 @@ s.interval <- 0.0025
 
 # Define spectra of catch and sparing being explored
 spect.s <- 0
-spect.c <- c(0.3*target.MSY.standard, 0.6*target.MSY.standard,0.6840986*target.MSY.standard, 0.9*target.MSY.standard,target.MSY.standard)
+spect.c <- c(0.3*target.MSY.standard, 0.6*target.MSY.standard,0.6740213*target.MSY.standard, 0.9*target.MSY.standard,target.MSY.standard)
 
 # Create results list
 results.list <- list()
@@ -2469,8 +2469,8 @@ extirp <- ggplot(new.data, aes(x = as.factor(catch/target.MSY.standard), y = ext
   stat_summary_bin(fun = "mean", geom = "col", fill="grey",color="black") +
   stat_summary_bin(fun.data = mean_se, fun.args=list(mult=1.96), geom = "pointrange") +
   scale_y_continuous(expand = c(0,0.1)) +
-  scale_x_discrete(labels = c(0.3,0.6,0.68,0.9,1)) +
-  labs(y = TeX(r'(Mean number of non-targeted species extirpated when $\\textit{s} = 0$)'),
+  scale_x_discrete(labels = c(0.3,0.6,0.67,0.9,1)) +
+  labs(y = TeX('Mean number of non-targeted species extirpated when $\\textit{s} = 0$'),
        x = TeX("Equib. catch of targeted species $(\\textit{C/C_{MSY}})$")) +
   theme_bw(base_size = 14)
 extirp 
@@ -2481,8 +2481,8 @@ surv <- ggplot(new.data, aes(x = as.factor(catch/target.MSY.standard), y = alive
   stat_summary_bin(fun = "mean", geom = "col", fill="grey",color="black") +
   stat_summary_bin(fun.data = mean_se, fun.args=list(mult=1.96), geom = "pointrange") +
   scale_y_continuous(limits = c(0,80), expand = expansion(mult = c(0, .1))) +
-  scale_x_discrete(labels = c(0.3,0.6,0.68,0.9,1)) +
-  labs(y = TeX(r'(Mean number of non-targeted species still present when $\\textit{s} = 0$)'),
+  scale_x_discrete(labels = c(0.3,0.6,0.67,0.9,1)) +
+  labs(y = TeX('Mean number of non-targeted species still present when $\\textit{s} = 0$'),
        x = TeX("Equib. catch of targeted species $(\\textit{C/C_{MSY}})$")) +
   theme_bw(base_size = 14)
 surv
@@ -2501,7 +2501,7 @@ extirpations <- ggplot(new.data, aes(x = extinct, y = as.factor(catch/target.MSY
        x = "Proportion of non-targeted species extirpated without an MPA") +
   scale_x_continuous(breaks = c(0, 4, 8, 12), labels = c("0.00", "0.05", "0.10", "0.15")) +
   scale_y_discrete(
-    labels = c(0.3,0.6,0.68,0.9,1)) +
+    labels = c(0.3,0.6,0.67,0.9,1)) +
   theme_bw(base_size = 16) +
   theme(axis.text.y=element_text(hjust=0.5))
 extirpations
