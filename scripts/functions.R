@@ -1,7 +1,7 @@
 # Script details ####
 
 # Script with functions used to undertake analysis and generate figures in 
-# "Meeting wild-caught seafood demand at least cost to biodiversity"
+# "The biodiversity benefits of marine protected areas in well-regulated fisheries"
 
 # For generating distributions ####
 
