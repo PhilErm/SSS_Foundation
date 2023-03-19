@@ -1,7 +1,7 @@
-# Scripts for *Meeting wild-caught seafood demand at least cost to biodiversity*
+# Scripts for *The biodiversity benefits of marine protected areas in well-regulated fisheries*
 
 ## About
-Produces the various analyses and figures associated with "Meeting wild-caught seafood demand at least cost to biodiversity".
+Produces the various analyses and figures associated with "The biodiversity benefits of marine protected areas in well-regulated fisheries".
 
 ## How to use
 For the majority of analyses and figures, run 'mainAnalysis.R'. To ensure other scripts (e.g. 'parameters.R' and 'functions.R') can be called from 'mainAnalysis.R', you may need to configure your working directory.
