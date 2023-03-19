@@ -1,7 +1,7 @@
 # Script details ####
 
 # Script with class-level parameters used in 
-# "Meeting wild-caught seafood demand at least cost to biodiversity"
+# "The biodiversity benefits of marine protected areas in well-regulated fisheries"
 
 # Load parameters ####
 
