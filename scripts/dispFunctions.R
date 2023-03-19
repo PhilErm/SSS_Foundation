@@ -1,7 +1,7 @@
 # Script details ####
 
 # Script with functions specific to model with dispersal in
-# "Meeting wild-caught seafood demand at least cost to biodiversity"
+# "The biodiversity benefits of marine protected areas in well-regulated fisheries"
 
 # Equilibria were found using Mathematica
 
