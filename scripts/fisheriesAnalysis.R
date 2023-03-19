@@ -1,7 +1,7 @@
 # Script details ####
 
 # Script for undertaking real-world fisheries analysis in
-# "Meeting wild-caught seafood demand at least cost to biodiversity"
+# "The biodiversity benefits of marine protected areas in well-regulated fisheries"
 
 # Load packages ####
 
